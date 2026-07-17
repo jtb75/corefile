@@ -1,0 +1,7 @@
+CORE          ELF sample dump (fixture, not a real core file)
+signal        11 (SIGSEGV)
+image         checkout-api@sha256:9f2c...be1a
+frame #0      retry_payment  checkout-api.c:118
+frame #1      settle         checkout-api.c:204
+frame #2      main           checkout-api.c:31
+note          ulimit -c unlimited

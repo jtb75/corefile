@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "id": "CF-4211",
+      "org": "acme-checkout",
+      "title": "SIGSEGV in prod-checkout-api",
+      "body": "Segfault under load in the payment retry path. Traced to a null card token deref."
+    },
+    {
+      "id": "flight-501",
+      "org": "esa-launch",
+      "title": "Unhandled conversion, 37s after launch",
+      "body": "64-bit float coerced into a 16-bit int. Guidance overflowed, core dumped, vehicle lost. See: Ariane 5 Flight 501, 1996."
+    },
+    {
+      "id": "CF-1988",
+      "org": "internet",
+      "title": "Stack smash in fingerd",
+      "body": "Unbounded gets() into a fixed buffer on the stack. Self-propagating. See: Morris Worm, 1988."
+    },
+    {
+      "id": "CF-0009",
+      "org": "acme-checkout",
+      "title": "Null dereference in session loader",
+      "body": "The billion-dollar mistake, invoiced again. A missing null check on an optional user."
+    }
+  ],
+  "signatures": [
+    { "module": "checkout-api", "func": "retry_payment", "note": "null token deref" },
+    { "module": "libssl", "func": "tls_heartbeat_read", "note": "over-read past record bounds" },
+    { "module": "fingerd", "func": "gets", "note": "stack buffer overflow" },
+    { "module": "guidance", "func": "convert_bh", "note": "unprotected float->int conversion" }
+  ]
+}

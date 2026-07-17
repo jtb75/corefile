@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Segmentation fault (core dumped)</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="segv-body">
+  <main class="segv">
+    <pre class="segv-art">
+$ ./corefile <span class="dim">--find</span> <span class="you">that_page</span>
+<span class="err">Segmentation fault (core dumped)</span>
+    </pre>
+    <p class="segv-msg">The page you dereferenced was null.</p>
+    <p class="segv-sub">Signal 11. No frame to unwind to.</p>
+    <a class="segv-back" href="/">← attach to the main thread</a>
+  </main>
+</body>
+</html>

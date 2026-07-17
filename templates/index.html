@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>corefile — from core dump to commit</title>
+  <link rel="preconnect" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="glyph" aria-hidden="true"></span>
+      <span class="wordmark">corefile</span>
+      <span class="dotio">.io</span>
+    </div>
+    <nav class="tabs">
+      <button class="tab is-active" data-view="trace">Trace</button>
+      <button class="tab" data-view="findings">Security&nbsp;findings</button>
+      <button class="tab" data-view="provenance">Provenance</button>
+    </nav>
+    <div class="env">
+      <span class="pill pill-prod">prod</span>
+      <span class="clock" id="clock">--:--:--&nbsp;UTC</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Incident rail -->
+    <aside class="rail">
+      <div class="rail-head">
+        <span>Open incidents</span>
+        <span class="count" id="incident-count">4</span>
+      </div>
+      <ul class="incidents" id="incidents"></ul>
+      <div class="rail-foot">
+        <label class="toggle">
+          <input type="checkbox" id="ulimit" />
+          <span></span>
+          <code>ulimit -c unlimited</code>
+        </label>
+        <p class="hint" id="ulimit-hint">deep analysis off</p>
+      </div>
+    </aside>
+
+    <!-- Workbench -->
+    <section class="stage">
+      <!-- TRACE VIEW -->
+      <div class="view view-trace is-active" id="view-trace">
+        <div class="incident-head">
+          <div>
+            <div class="sig">
+              <span class="badge badge-segv">SIGSEGV</span>
+              <h1 id="inc-title">SIGSEGV in prod-checkout-api</h1>
+            </div>
+            <p class="meta" id="inc-meta">acme-checkout · us-east-1 · 03:17:04 UTC · case CF-4211</p>
+          </div>
+          <div class="stat">
+            <span class="stat-num" id="mttc">37s</span>
+            <span class="stat-lbl">mean time to core dump</span>
+          </div>
+        </div>
+
+        <div class="trace-controls">
+          <button class="run" id="run">▶ Run trace</button>
+          <span class="run-note">cloud resource → container → image → Dockerfile → commit → line</span>
+        </div>
+
+        <ol class="trace" id="trace"></ol>
+      </div>
+
+      <!-- FINDINGS VIEW -->
+      <div class="view view-findings" id="view-findings">
+        <h1>Security findings <span class="sub">— corefile.io repository, HEAD</span></h1>
+        <p class="lede">This table mirrors a live <code>wizcli scan dir</code> run, one-to-one: same rule IDs, weakness classes, and <code>file:line</code>. Run the scan in the terminal and it lands on exactly these five HIGH findings — <code>WARN_BY_POLICY</code>.</p>
+        <table class="findings" id="findings"></table>
+      </div>
+
+      <!-- PROVENANCE VIEW -->
+      <div class="view view-provenance" id="view-provenance">
+        <h1>Build provenance</h1>
+        <div class="prov-card">
+          <div class="prov-row"><span>Artifact</span><code>checkout-api@sha256:9f2c…be1a</code></div>
+          <div class="prov-row"><span>Builder</span><code>ci-runner-07 · SLSA L2</code></div>
+          <div class="prov-row"><span>Source</span><code>git@…/acme/checkout-api.git · commit 4d1f0e2</code></div>
+          <div class="prov-row"><span>Signed</span><code>cosign · verified</code></div>
+        </div>
+        <blockquote class="thompson">
+          “You can't trust code that you did not totally create yourself.”
+          <cite>— Ken Thompson, <em>Reflections on Trusting Trust</em>, 1984</cite>
+        </blockquote>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span class="tagline">Your stack traces, unstacked.</span>
+    <span class="foot-eggs">
+      <code>kill -11</code> to reproduce · <code>kill -6</code> to give up ·
+      no core files were harmed in this demo
+    </span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
