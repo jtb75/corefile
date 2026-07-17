@@ -25,5 +25,5 @@ DATABASE_URL = "postgres://corefile_svc:S3cr3t-pgp4ss@db.prod.internal:5432/core
 DB_PASSWORD = "S3cr3t-pgp4ss"
 
 # Bind to loopback only. This app is deliberately vulnerable; never expose it.
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 8000
