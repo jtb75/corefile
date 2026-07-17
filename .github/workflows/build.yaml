@@ -1,0 +1,42 @@
+name: Build and Push Corefile Image
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # Exchange GitHub JWT for a short-lived GCP access token
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: access_token
+        workload_identity_provider: 'projects/750684753949/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider'
+        service_account: 'github-actions-builder@joebuhr-gke-lab-8212ed15.iam.gserviceaccount.com'
+
+    - name: Log in to Artifact Registry
+      uses: docker/login-action@v3
+      with:
+        registry: 'us-central1-docker.pkg.dev'
+        username: 'oauth2accesstoken'
+        password: ${{ steps.auth.outputs.access_token }}
+
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:${{ github.sha }}
+          us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:latest
