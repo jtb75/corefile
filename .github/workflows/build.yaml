@@ -13,7 +13,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout Code
+    - name: Check out repository
       uses: actions/checkout@v4
 
     # Exchange GitHub JWT for a short-lived GCP access token
@@ -32,11 +32,44 @@ jobs:
         username: 'oauth2accesstoken'
         password: ${{ steps.auth.outputs.access_token }}
 
-    - name: Build and Push Docker Image
+    - name: Generate Build Timestamp
+      id: prep
+      run: echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+    - name: Build Docker Image (Local Load)
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: true
+        load: true
         tags: |
           us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:${{ github.sha }}
           us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:latest
+        labels: |
+          org.opencontainers.image.source=https://github.com/jtb75/corefile
+          org.opencontainers.image.created=${{ steps.prep.outputs.created }}
+
+    - name: Download Wiz CLI
+      run: |
+        curl -o wizcli https://downloads.wiz.io/v1/wizcli/latest/wizcli-linux-amd64
+        chmod +x wizcli
+
+    - name: Run Wiz CLI Docker Image Scan
+      env:
+        WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+        WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+      run: |
+        ./wizcli scan container-image us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:${{ github.sha }} \
+          --dockerfile ./Dockerfile \
+          --policies "Default vulnerabilities policy"
+
+    - name: Push Docker Image to Registry
+      run: |
+        docker push us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:${{ github.sha }}
+        docker push us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:latest
+
+    - name: Wiz CLI Tagging
+      env:
+        WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+        WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+      run: |
+        ./wizcli tag us-central1-docker.pkg.dev/joebuhr-gke-lab-8212ed15/corefile-repo/corefile:${{ github.sha }}
