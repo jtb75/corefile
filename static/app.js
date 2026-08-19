@@ -156,7 +156,8 @@ function switchView(name) {
   document.querySelectorAll(".view").forEach((v) =>
     v.classList.toggle("is-active", v.id === "view-" + name));
 }
-document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => switchView(t.dataset.view)));
+// Bind only <button> tabs; the "Private console" tab is a real link (anchor).
+document.querySelectorAll("button.tab").forEach((t) => (t.onclick = () => switchView(t.dataset.view)));
 
 // ---------- ulimit easter egg ----------
 const ulimit = document.getElementById("ulimit");

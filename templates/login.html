@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>corefile — analyst console login</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/console.css" />
+</head>
+<body class="auth-body">
+  <main class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="wordmark">corefile</span><span class="dotio">.io</span>
+        <span class="auth-sub">analyst console</span>
+      </div>
+      <p class="auth-lede">Private incident workspace. Sign in to view your org's
+        cases and your saved integrations.</p>
+
+      {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+
+      <form method="post" action="/login" class="auth-form">
+        <label>Email<input type="email" name="email" autocomplete="username"
+          placeholder="arivera@acme-checkout.io" required /></label>
+        <label>Password<input type="password" name="password"
+          autocomplete="current-password" required /></label>
+        <button type="submit">Sign in</button>
+      </form>
+
+      <div class="auth-demo">
+        <span class="auth-demo-h">Demo accounts</span>
+        <code>arivera@acme-checkout.io</code>
+        <code>dpatel@acme-checkout.io</code>
+        <code>controller@esa-launch.int</code>
+        <span class="auth-demo-p">password for all: <code>corefile</code></span>
+      </div>
+      <a class="auth-back" href="/">&larr; back to trace workbench</a>
+    </div>
+  </main>
+</body>
+</html>
