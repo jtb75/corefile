@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>corefile — integrations</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/console.css" />
+</head>
+<body class="console-body">
+  <header class="topbar">
+    <div class="brand">
+      <span class="glyph" aria-hidden="true"></span>
+      <span class="wordmark">corefile</span><span class="dotio">.io</span>
+      <span class="pill pill-priv">private</span>
+    </div>
+    <div class="env">
+      <span class="whoami">{{ me.name }} · {{ me.org }} · {{ me.role }}</span>
+      <a class="pill pill-logout" href="/logout">Sign out</a>
+    </div>
+  </header>
+
+  <main class="settings" data-uid="{{ me.uid }}">
+    <nav class="settings-nav">
+      <span class="settings-nav-h">Settings</span>
+      <a class="settings-nav-item">Profile</a>
+      <a class="settings-nav-item">Organization</a>
+      <a class="settings-nav-item is-active">Integrations</a>
+      <a class="settings-nav-item">Notifications</a>
+      <a class="settings-nav-item">Billing</a>
+    </nav>
+
+    <section class="settings-body">
+      <div class="settings-head">
+        <h1>Integrations</h1>
+        <p>API keys corefile uses to fetch debug symbols and post crash alerts on
+          behalf of <strong>{{ me.email }}</strong>. Keep these secret — anyone
+          with a key can act as this workspace.</p>
+      </div>
+
+      <div class="keys" id="keys">
+        <div class="keys-loading">Loading connected services…</div>
+      </div>
+
+      <div class="settings-foot">
+        <button class="btn-primary" disabled>Save changes</button>
+        <span class="settings-foot-note">Last saved just now · changes sync to all analysts in {{ me.org }}</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/console.js"></script>
+</body>
+</html>

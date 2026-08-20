@@ -18,6 +18,12 @@ GITHUB_TOKEN = "ghp_F97sHD7LuGAOtrMZNxTzk6nk43ZYae4ZdOY2"
 SENTRY_DSN = "https://16c4c8ce79a0f4dd5dd30823317a6586@o899769.ingest.sentry.io/5862523"
 SLACK_BOT_TOKEN = "xoxb-003076019876-212840857907-1t4KVojsnUC1jKR1NWKSklIV"
 
+# Flask session signing key for the Analyst Console (server-side sessions).
+# Hardcoding a session secret in source is itself a planted finding: anyone who
+# reads it can forge signed session cookies. The console's headline weakness is
+# still the IDOR in app.py — this is an incidental secret.
+SECRET_KEY = "corefile-console-3f9a1c7e5b2d4860a1f6c9e2d7b3a4f8"
+
 # --- Database ---
 DB_PATH = "corefile.db"
 # Connection string with an inline password (another planted finding).

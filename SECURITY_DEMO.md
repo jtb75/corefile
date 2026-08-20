@@ -39,7 +39,41 @@ start flagging as rulesets evolve.
 | Path traversal | CWE-22 | `app.py` `/api/corefile` | `open(DIR + "/" + name)` — not flagged |
 | Weak hashing | CWE-327 | `app.py` `/api/fingerprint` | `hashlib.md5` — detected as low/informational at most |
 | Broken access control | CWE-284 | `app.py` `/api/cases/<id>` | `?org=` / `X-Role` trust + `?debug=1` backdoor — a runtime/DAST finding, not static |
-| Extra hardcoded secrets | CWE-798 | `config.py` | AWS key, Slack token, Sentry DSN, Postgres password — detected but below the secrets policy's HIGH bar (GitHub PATs are the reliable hit) |
+| Extra hardcoded secrets | CWE-798 | `config.py` | AWS key, Slack token, Sentry DSN, Postgres password, and the Flask `SECRET_KEY` (session-signing key → cookie forgery) — detected but below the secrets policy's HIGH bar (GitHub PATs are the reliable hit) |
+
+## C. Private area — authenticated findings (Analyst Console)
+
+The `/login` → `/private` area exists to demonstrate weaknesses that **only an
+authenticated scan (or a source-aware review) can reach** — an anonymous scanner
+sees a login wall and nothing else. Authentication here is deliberately *correct*
+(salted `werkzeug` password hashing, signed server-side sessions); the planted
+flaw is **authorization**.
+
+| # | Class | CWE | Location | Note |
+|---|-------|-----|----------|------|
+| 8 | IDOR / Broken Object Level Auth (BOLA, OWASP API1) | CWE-639 | `app.py` `/api/account/<uid>/integrations` | Login enforced, ownership never checked → any analyst reads any other analyst's stored cloud tokens (incl. cross-org) |
+| 8b | IDOR on profile | CWE-639 | `app.py` `/api/account/<uid>` | Same missing ownership check |
+| 9 | IDOR on private case notes | CWE-639 | `app.py` `/api/console/cases/<id>` | Any logged-in analyst reads any case body regardless of owning org |
+
+Demo accounts (password `corefile` for all): `arivera@acme-checkout.io` (u-1001),
+`dpatel@acme-checkout.io` (u-1002), `controller@esa-launch.int` (u-2001, admin).
+
+The `/private` page looks like an ordinary **Integrations** settings screen: it
+shows only the logged-in analyst's own API keys, partially masked. Two things
+make it a realistic BOLA demo:
+
+- The page loads keys via `GET /api/account/<uid>/integrations`, always asking
+  for its *own* uid — but the endpoint never checks ownership, so tampering the
+  uid (in a proxy, or an authenticated scan) returns another analyst's keys.
+- The masking is **cosmetic**: the full token is already in the JSON response
+  and behind the client-side "Reveal" toggle, so it's not a security control.
+
+To run an authenticated scan against this area, hand the scanner a valid
+`session` cookie (log in, copy the cookie, set it as a request header in Wiz
+DAST / Burp / ZAP).
+
+Note: `/console` is **not** this app's page — with `debug=True` it's Werkzeug's
+interactive debugger console (PIN-gated RCE). The private area lives at `/private`.
 
 ## Runtime demos (loopback only)
 
@@ -52,4 +86,9 @@ curl "http://127.0.0.1:8000/api/signatures?q=%25'--"
 
 # Path traversal — read a file outside dumps/
 curl --path-as-is 'http://127.0.0.1:8000/api/corefile?name=../config.py'
+
+# IDOR / BOLA — log in as one analyst, read another's private tokens
+curl -s -c /tmp/cj.txt -d email=arivera@acme-checkout.io -d password=corefile \
+  http://127.0.0.1:8000/login
+curl -s -b /tmp/cj.txt http://127.0.0.1:8000/api/account/u-2001/integrations
 ```

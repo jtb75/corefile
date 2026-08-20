@@ -24,14 +24,20 @@ from flask import (
     request,
     jsonify,
     render_template,
+    redirect,
+    url_for,
+    session,
     send_file,
     abort,
 )
 
 import config
+import auth
 from symbolicate import symbolicate_request
 
 app = Flask(__name__)
+# Server-side signed sessions for the Analyst Console (key hardcoded in config).
+app.secret_key = config.SECRET_KEY
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DUMPS_DIR = os.path.join(BASE, "dumps")
@@ -176,6 +182,95 @@ def fingerprint():
     data = request.args.get("data", "")
     digest = hashlib.md5(data.encode()).hexdigest()
     return jsonify({"fingerprint": digest})
+
+
+# --------------------------------------------------------------------------
+# Private area — the Analyst Console. Authentication is CORRECT here; the
+# planted weakness is authorization (IDOR / BOLA). Login required, ownership
+# never checked. An anonymous scan can't reach any of this; an authenticated
+# one walks straight into another analyst's stored cloud tokens.
+# --------------------------------------------------------------------------
+def current_uid():
+    return session.get("uid")
+
+
+def require_login():
+    # Authentication gate only. Deliberately does NOT check object ownership.
+    if not current_uid():
+        abort(401)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        acct = auth.authenticate(request.form.get("email"), request.form.get("password"))
+        if acct is None:
+            return render_template("login.html", error="Invalid credentials"), 401
+        session["uid"] = acct["uid"]
+        return redirect(url_for("console"))
+    if current_uid():
+        return redirect(url_for("console"))
+    return render_template("login.html", error=None)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
+@app.route("/private")
+def console():
+    require_login()
+    me = auth.get_account(current_uid())
+    # Roster of every analyst (non-sensitive fields) — clicking one triggers
+    # the IDOR fetch below against that analyst's uid.
+    roster = [auth.public_view(a) for a in auth.all_accounts() if a["uid"] != me["uid"]]
+    return render_template("console.html", me=me, roster=roster)
+
+
+# VULN 8 — IDOR / Broken Object Level Authorization (OWASP API1).
+# Any *authenticated* caller can read ANY account's private integration tokens
+# just by changing <uid>. Login is enforced and works; ownership is not.
+@app.route("/api/account/<uid>/integrations")
+def account_integrations(uid):
+    require_login()                       # authN enforced...
+    acct = auth.get_account(uid)          # ...but no authZ: never checks uid == session uid
+    if acct is None:
+        abort(404)
+    return jsonify(
+        {
+            "uid": acct["uid"],
+            "owner": acct["email"],
+            "org": acct["org"],
+            "integrations": acct["integrations"],  # another analyst's secrets
+        }
+    )
+
+
+# VULN 8b — IDOR on the account profile (same missing ownership check).
+@app.route("/api/account/<uid>")
+def account_profile(uid):
+    require_login()
+    acct = auth.get_account(uid)
+    if acct is None:
+        abort(404)
+    return jsonify(auth.public_view(acct))
+
+
+# VULN 9 — IDOR on private case notes: any logged-in analyst can read any
+# case's full body regardless of which org owns it.
+@app.route("/api/console/cases/<case_id>")
+def console_case(case_id):
+    require_login()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM cases WHERE id = ?", (case_id,)).fetchone()
+    conn.close()
+    if row is None:
+        abort(404)
+    return jsonify(
+        {"id": row["id"], "org": row["org"], "title": row["title"], "body": row["body"]}
+    )
 
 
 if __name__ == "__main__":
