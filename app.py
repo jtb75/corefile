@@ -18,6 +18,7 @@ import sqlite3
 import pickle
 import hashlib
 import base64
+import urllib.request
 
 from flask import (
     Flask,
@@ -182,6 +183,33 @@ def fingerprint():
     data = request.args.get("data", "")
     digest = hashlib.md5(data.encode()).hexdigest()
     return jsonify({"fingerprint": digest})
+
+
+# VULN 10 — Server-Side Request Forgery (SSRF).
+# "Attach remote corefile" lets an analyst point Corefile at a symbol server or
+# a teammate's shared dump by URL; the server fetches it and shows the body.
+# The whole URL is attacker-controlled, no scheme/host allowlist runs, redirects
+# are followed, and the response is handed straight back — a full-read SSRF.
+# On a cloud host this reaches the instance metadata service
+# (169.254.169.254 / metadata.google.internal) to steal the pod's service-account
+# token, plus any localhost-only admin service; file:// reads local files.
+@app.route("/api/fetch")
+def fetch_remote_corefile():
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify({"error": "pass ?url=<remote corefile or symbol server>"}), 400
+    # The dangerous part: user controls the whole URL and we return what we get.
+    # No validation of scheme, host, or resolved IP; SSRF sink is the urlopen.
+    with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310 — SSRF sink
+        status = getattr(resp, "status", 200)
+        body = resp.read(1_000_000)  # cap size; the flaw is *where* we fetch, not how much
+    return jsonify(
+        {
+            "url": url,
+            "status": status,
+            "body": body.decode("utf-8", "replace"),
+        }
+    )
 
 
 # --------------------------------------------------------------------------
