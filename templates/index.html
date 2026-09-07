@@ -73,7 +73,7 @@
       <!-- FINDINGS VIEW -->
       <div class="view view-findings" id="view-findings">
         <h1>Security findings <span class="sub">— corefile.io repository, HEAD</span></h1>
-        <p class="lede">This table mirrors a live <code>wizcli scan dir</code> run, one-to-one: same rule IDs, weakness classes, and <code>file:line</code>. Run the scan in the terminal and it lands on exactly these five HIGH findings — <code>WARN_BY_POLICY</code>.</p>
+        <p class="lede">The first five rows mirror a live <code>wizcli scan dir</code> run one-to-one — same rule IDs, weakness classes, and <code>file:line</code>; the scan lands on exactly these five HIGH findings (<code>WARN_BY_POLICY</code>). The <span class="hl">highlighted</span> row is what today's static ruleset misses: an unauthenticated <strong>SSRF</strong> caught at runtime (DAST) and in review — the case for layered coverage.</p>
         <table class="findings" id="findings"></table>
       </div>
 

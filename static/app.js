@@ -45,18 +45,24 @@ const TRACE = [
     finding: "os-command-injection · symbolicate.py:42" },
 ];
 
-// Mirrors `wizcli scan dir` output 1:1 — same rule IDs, CWEs, file:line, severity.
+// First five rows mirror `wizcli scan dir` output 1:1 — same rule IDs, CWEs,
+// file:line, severity. The SSRF row (beyond:true) is deliberately NOT a current
+// static hit: it's caught at runtime (DAST) and in review — the layered-coverage
+// point. Each row carries its own severity and source.
 const FINDINGS = [
-  { kind: "SAST", wiz: "WS-I013-PYTHON-00193", cwe: "CWE-78", loc: "symbolicate.py:42",
+  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-I013-PYTHON-00193", cwe: "CWE-78", loc: "symbolicate.py:42",
     feature: "Symbolicate corefile", note: "addr2line run via shell with query-string input" },
-  { kind: "SAST", wiz: "WS-PYTHON-00330", cwe: "CWE-89", loc: "app.py:130",
+  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-PYTHON-00330", cwe: "CWE-89", loc: "app.py:130",
     feature: "Crash-signature search", note: "query string concatenated into SQL" },
-  { kind: "SAST", wiz: "WS-I013-PYTHON-00054", cwe: "CWE-95", loc: "app.py:166",
+  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-I013-PYTHON-00054", cwe: "CWE-95", loc: "app.py:166",
     feature: "Derived metric", note: "eval() of a user-supplied expression" },
-  { kind: "Secret", wiz: "GitHub Classic PAT", cwe: "config file", loc: "config.py:15",
+  { sev: "HIGH", src: "wizcli secret", kind: "Secret", wiz: "GitHub Classic PAT", cwe: "config file", loc: "config.py:15",
     feature: "Integration config", note: "GitHub PAT committed to source" },
-  { kind: "Secret", wiz: "GitHub Classic PAT", cwe: "IaC", loc: "Dockerfile:7",
+  { sev: "HIGH", src: "wizcli secret", kind: "Secret", wiz: "GitHub Classic PAT", cwe: "IaC", loc: "Dockerfile:7",
     feature: "Image build ARG", note: "token baked into image history" },
+  { sev: "HIGH", src: "DAST · review", kind: "DAST", wiz: "runtime probe", cwe: "CWE-918", loc: "app.py:/api/fetch",
+    feature: "Attach remote corefile", beyond: true,
+    note: "unauth SSRF — server fetches an attacker-controlled URL → cloud-metadata SA-token theft" },
 ];
 
 // ---------- render incident rail ----------
@@ -142,10 +148,12 @@ runBtn.onclick = () => {
 // ---------- findings table ----------
 const findingsTable = document.getElementById("findings");
 findingsTable.innerHTML =
-  "<tr><th>Sev</th><th>Type</th><th>Rule</th><th>Weakness</th><th>Location</th><th>Feature</th></tr>" +
+  "<tr><th>Sev</th><th>Source</th><th>Rule</th><th>Weakness</th><th>Location</th><th>Feature</th></tr>" +
   FINDINGS.map((f) =>
-    `<tr><td><span class="sev sev-high">HIGH</span></td>` +
-    `<td>${f.kind}</td><td><code>${f.wiz}</code></td><td>${f.cwe}</td>` +
+    `<tr${f.beyond ? ' class="beyond"' : ""}>` +
+    `<td><span class="sev sev-${(f.sev || "HIGH").toLowerCase()}">${f.sev || "HIGH"}</span></td>` +
+    `<td>${f.kind}<div class="fsrc">${f.src}</div></td>` +
+    `<td><code>${f.wiz}</code></td><td>${f.cwe}</td>` +
     `<td><code>${f.loc}</code></td><td>${f.feature}<div class="fnote">${f.note}</div></td></tr>`
   ).join("");
 
