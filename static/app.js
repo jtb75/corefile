@@ -13,56 +13,25 @@ const INCIDENTS = [
     region: "us-east-1", at: "02:54:11 UTC", mttc: "1964", live: false },
 ];
 
-// Six stages: cloud resource -> code line. Terminal node is a real planted vuln.
+// Six stages: cloud resource -> the source line the crash traces back to.
 const TRACE = [
   { kind: "cloud resource", title: 'aws_ecs_service.<span class="hl">checkout-prod</span>',
     kv: { Region: "us-east-1", Cluster: "acme-prod", "Desired / running": "6 / 5",
-          "IaC": "terraform · modules/ecs/service.tf:88" } },
+          "IaC": "terraform · modules/ecs/service.tf" } },
   { kind: "running task", title: 'ecs/task <span class="hl">a91f…d0</span>',
     kv: { "Image digest": "sha256:9f2c…be1a", "Task role": "checkout-task-role",
-          "Env": "SENTRY_DSN, DB_HOST, REGISTRY_TOKEN", "Exit": "139 (128+SIGSEGV)" } },
+          "Env": "SENTRY_DSN, DB_HOST", "Exit": "139 (128+SIGSEGV)" } },
   { kind: "image / registry", title: 'checkout-api:<span class="hl">2.14.0</span>',
     kv: { "Registry": "acme.dkr.ecr.us-east-1", "Layers": "11",
           "Flagged layer": "#7 — COPY tools/ (adds symbolicate helper)",
           "Provenance": "SLSA L2 · cosign verified" } },
-  { kind: "Dockerfile", title: 'Dockerfile <span class="hl">ARG REGISTRY_TOKEN</span>',
-    kv: { "Line": "7", "Issue": "GitHub PAT baked into image history",
-          "Introduced by": "layer #7" },
-    finding: "GitHub Classic PAT · Dockerfile:7" },
+  { kind: "Dockerfile", title: 'Dockerfile <span class="hl">line 7</span>',
+    kv: { "Line": "7", "Layer": "#7 — COPY tools/", "Base": "python:3.12-slim" } },
   { kind: "commit / PR", title: 'PR #613 <span class="hl">“faster symbolication”</span>',
-    kv: { "Commit": "4d1f0e2", "Author": "j.rivera", "CI": "unit ✓  sast ✗ (overridden)",
-          "Merged": "2 days ago" },
-    diff: [
-      { t: "ctx", s: "  def symbolicate_request():" },
-      { t: "del", s: '-     return check_output([ADDR2LINE, "-f", "-e", binary, addr])' },
-      { t: "add", s: '+     cmd = "addr2line -f -e " + binary + " " + addr' },
-      { t: "add", s: "+     return check_output(cmd, shell=True)" },
-    ] },
-  { kind: "source line", terminal: true, title: 'symbolicate.py:<span class="hl">42</span>',
+    kv: { "Commit": "4d1f0e2", "Author": "j.rivera", "CI": "unit ✓", "Merged": "2 days ago" } },
+  { kind: "source line", terminal: true, title: 'symbolicate.py',
     kv: { "Function": "symbolicate_request()", "Input": "binary, addr — from query string",
-          "Sink": "subprocess.check_output(cmd, shell=True)",
-          "Rule": "WS-I013-PYTHON-00193 · CWE-78" },
-    finding: "os-command-injection · symbolicate.py:42" },
-];
-
-// First five rows mirror `wizcli scan dir` output 1:1 — same rule IDs, CWEs,
-// file:line, severity. The SSRF row (beyond:true) is deliberately NOT a current
-// static hit: it's caught at runtime (DAST) and in review — the layered-coverage
-// point. Each row carries its own severity and source.
-const FINDINGS = [
-  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-I013-PYTHON-00193", cwe: "CWE-78", loc: "symbolicate.py:42",
-    feature: "Symbolicate corefile", note: "addr2line run via shell with query-string input" },
-  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-PYTHON-00330", cwe: "CWE-89", loc: "app.py:130",
-    feature: "Crash-signature search", note: "query string concatenated into SQL" },
-  { sev: "HIGH", src: "wizcli SAST", kind: "SAST", wiz: "WS-I013-PYTHON-00054", cwe: "CWE-95", loc: "app.py:166",
-    feature: "Derived metric", note: "eval() of a user-supplied expression" },
-  { sev: "HIGH", src: "wizcli secret", kind: "Secret", wiz: "GitHub Classic PAT", cwe: "config file", loc: "config.py:15",
-    feature: "Integration config", note: "GitHub PAT committed to source" },
-  { sev: "HIGH", src: "wizcli secret", kind: "Secret", wiz: "GitHub Classic PAT", cwe: "IaC", loc: "Dockerfile:7",
-    feature: "Image build ARG", note: "token baked into image history" },
-  { sev: "HIGH", src: "DAST · review", kind: "DAST", wiz: "runtime probe", cwe: "CWE-918", loc: "app.py:/api/fetch",
-    feature: "Attach remote corefile", beyond: true,
-    note: "unauth SSRF — server fetches an attacker-controlled URL → cloud-metadata SA-token theft" },
+          "Resolves": "addr2line -f -e <binary> <addr>" } },
 ];
 
 // ---------- render incident rail ----------
@@ -135,27 +104,18 @@ runBtn.onclick = () => {
       if (stage.terminal) li.querySelector(".card").classList.add("open");
       if (idx === TRACE.length - 1) {
         runBtn.textContent = "✓ traced";
-        const cta = document.createElement("div");
-        cta.className = "to-findings";
-        cta.innerHTML = "<button>View security findings for this line →</button>";
-        cta.querySelector("button").onclick = () => switchView("findings");
-        traceEl.appendChild(cta);
       }
     }, 520 * (idx + 1)));
   });
 };
 
-// ---------- findings table ----------
+// ---------- findings ----------
+// The public dashboard does not enumerate results; per-org findings live behind
+// the authenticated Analyst Console.
 const findingsTable = document.getElementById("findings");
 findingsTable.innerHTML =
-  "<tr><th>Sev</th><th>Source</th><th>Rule</th><th>Weakness</th><th>Location</th><th>Feature</th></tr>" +
-  FINDINGS.map((f) =>
-    `<tr${f.beyond ? ' class="beyond"' : ""}>` +
-    `<td><span class="sev sev-${(f.sev || "HIGH").toLowerCase()}">${f.sev || "HIGH"}</span></td>` +
-    `<td>${f.kind}<div class="fsrc">${f.src}</div></td>` +
-    `<td><code>${f.wiz}</code></td><td>${f.cwe}</td>` +
-    `<td><code>${f.loc}</code></td><td>${f.feature}<div class="fnote">${f.note}</div></td></tr>`
-  ).join("");
+  '<tr><td class="findings-empty">Security findings for your organization are ' +
+  'available in the <a href="/login">private console</a>.</td></tr>';
 
 // ---------- view switching ----------
 function switchView(name) {

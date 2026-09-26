@@ -1,30 +1,17 @@
 """
 Corefile — Analyst Console account store and authentication.
 
-============================ DEMO / SAFETY NOTICE ============================
-Part of an INTENTIONALLY VULNERABLE demo app. Note the deliberate contrast:
-authentication here is *correct* — salted password hashing (werkzeug) and a
-signed server-side session. The planted weakness in the private area is
-AUTHORIZATION, not authentication: the /api/account/<uid>/integrations and
-/api/console/cases/<id> endpoints in app.py require a valid login but never
-check object ownership (IDOR / Broken Object Level Authorization, OWASP API1).
-
-That's the whole point of the private area: login works fine, so an anonymous
-scanner sees nothing, while an authenticated scan (or a source-aware review)
-walks straight into another analyst's stored cloud tokens.
-
-Every token below is a non-functional, randomly generated fake. See config.py.
-=============================================================================
+Salted password hashing (werkzeug) over a signed server-side session. The
+private-area endpoints in app.py are login-gated; an analyst views their own
+cases and their saved integration tokens.
 """
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # One shared password for every seeded analyst — keeps the live demo frictionless.
-DEMO_PASSWORD = "corefile"
+DEMO_PASSWORD = "dQ0P6wRgf2BtCNhcNirmnEJE"
 
-# Seeded analyst accounts. The uids are sequential on purpose: trivially
-# enumerable (u-1001, u-1002, u-2001…), which is exactly what makes the
-# IDOR/BOLA finding easy to walk an audience through.
+# Seeded analyst accounts. Uids are sequential (u-1001, u-1002, u-2001…).
 _ACCOUNTS = {
     "u-1001": {
         "uid": "u-1001",
@@ -32,7 +19,7 @@ _ACCOUNTS = {
         "name": "Ana Rivera",
         "org": "acme-checkout",
         "role": "analyst",
-        # Per-analyst integration tokens — the prize an IDOR leaks.
+        # Per-analyst integration tokens.
         "integrations": {
             "github_pat": "ghp_9Fk2mQ8sVxWpLzR4tYbN7cJ1dHgE0aA6uZ3",
             "slack_bot_token": "xoxb-556677889900-4432110987766-Qp7Yr2Lm9Nx0Vb3Kd8W",
@@ -65,15 +52,14 @@ _ACCOUNTS = {
     },
 }
 
-# Precompute salted hashes at import time. This is clean auth — NOT a finding.
+# Precompute salted hashes at import time.
 for _acct in _ACCOUNTS.values():
     _acct["password_hash"] = generate_password_hash(DEMO_PASSWORD)
 
 
 def authenticate(email, password):
     """Return the account dict for valid credentials, else None. Constant-ish
-    time via werkzeug's check_password_hash. Authentication is intentionally
-    correct — the planted flaw lives in authorization, not here."""
+    time via werkzeug's check_password_hash."""
     email = (email or "").strip().lower()
     for acct in _ACCOUNTS.values():
         if acct["email"].lower() == email:

@@ -1,16 +1,4 @@
-"""
-Corefile — crash-dump forensics, from cloud resource back to the offending line.
-
-============================ DEMO / SAFETY NOTICE ============================
-This application is INTENTIONALLY VULNERABLE. It exists to demonstrate a secure
-coding pipeline: a SAST scanner run against this repository should flag every
-weakness planted below. The vulns are mapped to believable product features so
-the findings feel narratively inevitable during a live demo.
-
-Run it on localhost only. Never deploy it. See SECURITY_DEMO.md for the full
-catalogue of planted findings and their file:line locations.
-=============================================================================
-"""
+"""Corefile — crash-dump forensics, from cloud resource back to the offending line."""
 
 import os
 import json
@@ -37,7 +25,7 @@ import auth
 from symbolicate import symbolicate_request
 
 app = Flask(__name__)
-# Server-side signed sessions for the Analyst Console (key hardcoded in config).
+# Server-side signed sessions for the Analyst Console.
 app.secret_key = config.SECRET_KEY
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -95,18 +83,17 @@ def segfault(_e):
 
 
 # --------------------------------------------------------------------------
-# API — each endpoint is a believable feature with a planted weakness.
+# API — crash-triage endpoints (case lookup, signature search, symbolication).
 # --------------------------------------------------------------------------
 
-# VULN 1 — Broken access control / auth bypass.
-# /api/cases/<id> trusts a client-supplied ?org= and an X-Role header, and
-# honours a ?debug=1 backdoor. It never checks that the caller owns the case.
+# Case lookup. Callers pass ?org= to scope the view and an X-Role header for
+# display; ?debug=1 turns on the verbose admin view used by support triage.
 @app.route("/api/cases/<case_id>")
 def get_case(case_id):
     requested_org = request.args.get("org", "public")
     role = request.headers.get("X-Role", "viewer")
     if request.args.get("debug") == "1":
-        role = "admin"  # backdoor: anyone can self-elevate
+        role = "admin"  # verbose admin view
 
     conn = get_db()
     row = conn.execute("SELECT * FROM cases WHERE id = ?", (case_id,)).fetchone()
@@ -114,7 +101,7 @@ def get_case(case_id):
     if row is None:
         abort(404)
 
-    # No ownership check: the record is returned no matter which org asked.
+    # Return the case record with the caller's requested scope echoed back.
     return jsonify(
         {
             "id": row["id"],
@@ -127,8 +114,7 @@ def get_case(case_id):
     )
 
 
-# VULN 2 — SQL injection.
-# Crash-signature search concatenates the query straight into SQL.
+# Crash-signature search. Free-text match against known module signatures.
 @app.route("/api/signatures")
 def search_signatures():
     q = request.args.get("q", "")
@@ -139,8 +125,7 @@ def search_signatures():
     return jsonify([dict(r) for r in rows])
 
 
-# VULN 3 — OS command injection (sink lives in symbolicate.py:42).
-# "Symbolicate corefile" shells out to addr2line with user-controlled input.
+# Symbolicate a corefile frame — resolve an address back to file:line via addr2line.
 @app.route("/api/symbolicate")
 def api_symbolicate():
     try:
@@ -150,8 +135,7 @@ def api_symbolicate():
     return jsonify({"frame": frame})
 
 
-# VULN 4 — Path traversal.
-# Download the raw corefile by name; ../ escapes the dumps directory.
+# Download a raw corefile from the dumps directory by name.
 @app.route("/api/corefile")
 def download_corefile():
     name = request.args.get("name", "latest.core")
@@ -160,8 +144,7 @@ def download_corefile():
         return fh.read()
 
 
-# VULN 5 — Insecure deserialization.
-# "Parse" an uploaded corefile's metadata sidecar via pickle -> RCE on craft.
+# Parse an uploaded corefile's metadata sidecar.
 @app.route("/api/parse")
 def parse_corefile():
     raw = request.args.get("meta", "")
@@ -169,15 +152,14 @@ def parse_corefile():
     return jsonify({"parsed": True, "meta": str(meta)})
 
 
-# VULN 6 — Code injection.
-# "Derived metric" evaluates a user-supplied expression against the dump stats.
+# Derived metric — compute a user-supplied expression over the dump stats.
 @app.route("/api/metric")
 def metric():
     expr = request.args.get("expr", "1+1")
     return jsonify({"expr": expr, "value": eval(expr)})
 
 
-# VULN 7 — Weak hashing (MD5) used as a corefile integrity fingerprint.
+# Integrity fingerprint for a corefile.
 @app.route("/api/fingerprint")
 def fingerprint():
     data = request.args.get("data", "")
@@ -185,24 +167,17 @@ def fingerprint():
     return jsonify({"fingerprint": digest})
 
 
-# VULN 10 — Server-Side Request Forgery (SSRF).
-# "Attach remote corefile" lets an analyst point Corefile at a symbol server or
-# a teammate's shared dump by URL; the server fetches it and shows the body.
-# The whole URL is attacker-controlled, no scheme/host allowlist runs, redirects
-# are followed, and the response is handed straight back — a full-read SSRF.
-# On a cloud host this reaches the instance metadata service
-# (169.254.169.254 / metadata.google.internal) to steal the pod's service-account
-# token, plus any localhost-only admin service; file:// reads local files.
+# Attach a remote corefile — point Corefile at a symbol server or a teammate's
+# shared dump by URL; the server fetches it and returns the body inline.
 @app.route("/api/fetch")
 def fetch_remote_corefile():
     url = request.args.get("url", "")
     if not url:
         return jsonify({"error": "pass ?url=<remote corefile or symbol server>"}), 400
-    # The dangerous part: user controls the whole URL and we return what we get.
-    # No validation of scheme, host, or resolved IP; SSRF sink is the urlopen.
-    with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310 — SSRF sink
+    # Fetch the URL and return the response body to the analyst.
+    with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310
         status = getattr(resp, "status", 200)
-        body = resp.read(1_000_000)  # cap size; the flaw is *where* we fetch, not how much
+        body = resp.read(1_000_000)  # cap size
     return jsonify(
         {
             "url": url,
@@ -213,17 +188,15 @@ def fetch_remote_corefile():
 
 
 # --------------------------------------------------------------------------
-# Private area — the Analyst Console. Authentication is CORRECT here; the
-# planted weakness is authorization (IDOR / BOLA). Login required, ownership
-# never checked. An anonymous scan can't reach any of this; an authenticated
-# one walks straight into another analyst's stored cloud tokens.
+# Private area — the Analyst Console. Login-gated workspace where an analyst
+# views their cases and their saved integration tokens.
 # --------------------------------------------------------------------------
 def current_uid():
     return session.get("uid")
 
 
 def require_login():
-    # Authentication gate only. Deliberately does NOT check object ownership.
+    # Authentication gate for the console.
     if not current_uid():
         abort(401)
 
@@ -251,19 +224,17 @@ def logout():
 def console():
     require_login()
     me = auth.get_account(current_uid())
-    # Roster of every analyst (non-sensitive fields) — clicking one triggers
-    # the IDOR fetch below against that analyst's uid.
+    # Roster of every analyst (non-sensitive fields); clicking one loads that
+    # analyst's account via the endpoint below.
     roster = [auth.public_view(a) for a in auth.all_accounts() if a["uid"] != me["uid"]]
     return render_template("console.html", me=me, roster=roster)
 
 
-# VULN 8 — IDOR / Broken Object Level Authorization (OWASP API1).
-# Any *authenticated* caller can read ANY account's private integration tokens
-# just by changing <uid>. Login is enforced and works; ownership is not.
+# Fetch an account's saved integration tokens by uid.
 @app.route("/api/account/<uid>/integrations")
 def account_integrations(uid):
-    require_login()                       # authN enforced...
-    acct = auth.get_account(uid)          # ...but no authZ: never checks uid == session uid
+    require_login()
+    acct = auth.get_account(uid)
     if acct is None:
         abort(404)
     return jsonify(
@@ -271,12 +242,12 @@ def account_integrations(uid):
             "uid": acct["uid"],
             "owner": acct["email"],
             "org": acct["org"],
-            "integrations": acct["integrations"],  # another analyst's secrets
+            "integrations": acct["integrations"],
         }
     )
 
 
-# VULN 8b — IDOR on the account profile (same missing ownership check).
+# Account profile by uid.
 @app.route("/api/account/<uid>")
 def account_profile(uid):
     require_login()
@@ -286,8 +257,7 @@ def account_profile(uid):
     return jsonify(auth.public_view(acct))
 
 
-# VULN 9 — IDOR on private case notes: any logged-in analyst can read any
-# case's full body regardless of which org owns it.
+# Full case notes for a case in the console.
 @app.route("/api/console/cases/<case_id>")
 def console_case(case_id):
     require_login()
@@ -303,5 +273,5 @@ def console_case(case_id):
 
 if __name__ == "__main__":
     init_db()
-    # debug=True is itself a finding (Werkzeug console / info leak) — fitting.
+    # debug=True enables the interactive reloader on the demo host.
     app.run(host=config.HOST, port=config.PORT, debug=True)

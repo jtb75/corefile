@@ -2,6 +2,7 @@
 # own LFR/SSRF (/api/fetch file://, /api/corefile ../) can read any file it ships
 # with, so shipping these hands an attacker the planted-vuln solutions.
 SECURITY_DEMO.md
+README.md
 demo/
 CLAUDE-SECURITY-*/
 
